@@ -20,49 +20,52 @@ defmodule Logflare.SystemMetrics.Cluster do
   end
 
   def finch do
-    # TODO(ziinc): add in datadog pools
-    for url <- [
-          "https://bigquery.googleapis.com",
-          "https://http-intake.logs.datadoghq.com",
-          "https://http-intake.logs.us3.datadoghq.com",
-          "https://http-intake.logs.us5.datadoghq.com",
-          "https://http-intake.logs.datadoghq.eu",
-          "https://http-intake.logs.ap1.datadoghq.com"
-        ],
-        pool <- [
-          Logflare.FinchDefault,
-          Logflare.FinchIngest,
-          Logflare.FinchQuery
-        ] do
-      case Finch.get_pool_status(pool, url) do
-        {:ok, metrics} ->
-          counts =
-            for metric <- metrics,
-                Map.get(metric, :in_flight_requests),
-                do: metric.in_flight_requests
+    # Skip pool checks if disabled via environment variable
+    if Application.get_env(:logflare, :enable_pool_check, true) do
+      # TODO(ziinc): add in datadog pools
+      for url <- [
+            "https://bigquery.googleapis.com",
+            "https://http-intake.logs.datadoghq.com",
+            "https://http-intake.logs.us3.datadoghq.com",
+            "https://http-intake.logs.us5.datadoghq.com",
+            "https://http-intake.logs.datadoghq.eu",
+            "https://http-intake.logs.ap1.datadoghq.com"
+          ],
+          pool <- [
+            Logflare.FinchDefault,
+            Logflare.FinchIngest,
+            Logflare.FinchQuery
+          ] do
+        case Finch.get_pool_status(pool, url) do
+          {:ok, metrics} ->
+            counts =
+              for metric <- metrics,
+                  Map.get(metric, :in_flight_requests),
+                  do: metric.in_flight_requests
 
-          in_use_connections =
-            for metric <- metrics,
-                Map.get(metric, :in_use_connections),
-                do: metric.in_use_connections
+            in_use_connections =
+              for metric <- metrics,
+                  Map.get(metric, :in_use_connections),
+                  do: metric.in_use_connections
 
-          available_connections =
-            for metric <- metrics,
-                Map.get(metric, :available_connections),
-                do: metric.available_connections
+            available_connections =
+              for metric <- metrics,
+                  Map.get(metric, :available_connections),
+                  do: metric.available_connections
 
-          :telemetry.execute(
-            [:logflare, :system, :finch],
-            %{
-              in_flight_requests: Enum.sum(counts),
-              in_use_connections: Enum.sum(in_use_connections),
-              available_connections: Enum.sum(available_connections)
-            },
-            %{url: url, pool: Atom.to_string(pool)}
-          )
+            :telemetry.execute(
+              [:logflare, :system, :finch],
+              %{
+                in_flight_requests: Enum.sum(counts),
+                in_use_connections: Enum.sum(in_use_connections),
+                available_connections: Enum.sum(available_connections)
+              },
+              %{url: url, pool: Atom.to_string(pool)}
+            )
 
-        _ ->
-          nil
+          _ ->
+            nil
+        end
       end
     end
   end
